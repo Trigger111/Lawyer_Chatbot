@@ -1,0 +1,25 @@
+﻿# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# VS Code
+.vscode/
+
+# Логи и временные штуки
+*.log
+
+# SQLite и дампы
+data/*.db
+data/*.sqlite3
+backups/
+
+# Секреты
+.env
+*.json
+!app/example-service.json
+
+# Кэш/прочее
+.DS_Store
+Thumbs.db

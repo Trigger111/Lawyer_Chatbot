@@ -1,0 +1,2 @@
+.\.venv\Scripts\Activate.ps1
+python -u main.py   # -u = без буферизации, логи видно сразу
