@@ -1,3 +1,4 @@
+# app/keyboards.py
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton
@@ -50,11 +51,12 @@ def back_and_menu_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
-# 🔹 нова клавіатура: тільки «Головне меню»
 def menu_only_kb() -> ReplyKeyboardMarkup:
+    """Окрема клава лише з «Головне меню» — для розділів «Статті…», «Про юриста…»."""
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="🏠 Меню")]],
         resize_keyboard=True,
+        input_field_placeholder="Натисніть «Меню», щоб повернутися",
     )
 
 def contact_request_kb() -> ReplyKeyboardMarkup:
@@ -142,7 +144,7 @@ def document_plan_inline_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="common:back")],
     ])
 
-# (в проекті не використовуємо тайм-слоти; залишено як утиліти)
+# (утиліти — якщо знадобляться тайм-слоти)
 def generate_time_slots(days_ahead: int = 3) -> list[str]:
     base = datetime.now(tz=TZ)
     hours = [time(10, 0), time(12, 0), time(15, 0), time(18, 0)]
@@ -158,8 +160,10 @@ def generate_time_slots(days_ahead: int = 3) -> list[str]:
 def time_slots_inline_kb() -> InlineKeyboardMarkup:
     slots = generate_time_slots()
     rows = [
-        [InlineKeyboardButton(text=datetime.fromisoformat(s).strftime("%a %d.%m %H:%M"),
-                              callback_data=f"book:slot:{s}")]
+        [InlineKeyboardButton(
+            text=datetime.fromisoformat(s).strftime("%a %d.%m %H:%M"),
+            callback_data=f"book:slot:{s}"
+        )]
         for s in slots
     ]
     rows.append([InlineKeyboardButton(text="👩‍💼 Написати менеджеру", callback_data="book:alt:manager")])
