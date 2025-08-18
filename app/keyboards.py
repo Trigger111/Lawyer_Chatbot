@@ -80,7 +80,6 @@ def back_menu_skip_kb() -> ReplyKeyboardMarkup:
     )
 
 # ---------------- Inline keyboards ----------------
-# лише 4 категорії
 CATEGORIES = [
     ("⚖️ Кримінальне",   "criminal"),
     ("🏢 Господарське",  "commercial"),

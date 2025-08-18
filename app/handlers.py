@@ -26,12 +26,19 @@ from .keyboards import (
 )
 from app.db import async_session, create_lead, upsert_user, Lead, Document
 
-# -------- Хелпер для "невидимого" сообщения при скрытии клавиатуры --------
-HIDE = "\u2063"  # INVISIBLE SEPARATOR — непустой для Telegram
+router = Router()
 
-async def hide_reply_keyboard(message: Message):
-    """Спрятать нижнюю reply-клавиатуру без лишнего текста в чате."""
-    await message.answer(HIDE, reply_markup=ReplyKeyboardRemove())
+# ----------------- Служебные утилиты -----------------
+async def _hide_reply_keyboard(message: Message) -> None:
+    """
+    Спрятать нижнюю reply-клавиатуру без «пустого» пузыря в чате:
+    отправляем служебное сообщение с ReplyKeyboardRemove и сразу удаляем его.
+    """
+    tmp = await message.answer(".", reply_markup=ReplyKeyboardRemove())
+    try:
+        await tmp.delete()
+    except Exception:
+        pass
 
 # ----------------- ADMIN IDS FROM .env -----------------
 RAW_ADMIN_IDS = os.getenv("ADMIN_IDS", "")
@@ -66,8 +73,6 @@ BTN_SET = {t.lower() for t in BTN_TITLES.values()}
 # --- файлы на етапі короткого опису ---
 MAX_PDFS = 2
 ALLOWED_DOC_MIMES = {"application/pdf"}
-
-router = Router()
 
 # ----------------- Admin notify with actions -----------------
 def kb_admin_lead_actions(lead_id: int) -> InlineKeyboardMarkup:
@@ -228,7 +233,7 @@ async def about(message: Message, state: FSMContext):
         "<b>Спеціалізації:</b> кримінальне, цивільне, господарське право\n"
         "<b>Контакти:</b> @mariyabutina, mashabutina2001@gmail.com\n"
         "<b>Години роботи:</b> 08:00–20:00 (пн–пт), вихідні за потреби",
-        reply_markup=menu_only_kb(),  # лише «Меню»
+        reply_markup=menu_only_kb(),
     )
 
 # ----------------- FSM states -----------------
@@ -259,14 +264,17 @@ class DocumentFlow(StatesGroup):
 # ----------------- 1) Quick question -----------------
 @router.message(F.text.func(lambda t: norm(t) == "швидке питання"))
 async def quick_entry(message: Message, state: FSMContext):
-    await hide_reply_keyboard(message)  # сховали reply-клавіатуру
+    await _hide_reply_keyboard(message)   # прячем reply-клавиатуру без «пустого» пузыря
     await state.set_state(Quick.category)
     await message.answer("Оберіть категорію звернення:", reply_markup=categories_inline_kb())
 
 @router.callback_query(Quick.category, F.data == "common:back")
 async def quick_cat_back(call: CallbackQuery, state: FSMContext):
     await state.clear()
-    await call.message.edit_text("Головне меню:", reply_markup=None)
+    try:
+        await call.message.delete()  # убираем карточку с инлайн-клавой — чат чище
+    except Exception:
+        pass
     await call.message.answer("Головне меню:", reply_markup=main_reply_kb())
     await call.answer()
 
@@ -467,14 +475,17 @@ async def _finalize_quick(message: Message, state: FSMContext, email: Optional[s
 # ----------------- 2) Booking (без календаря) -----------------
 @router.message(F.text.func(lambda t: norm(t) == "записатися на консультацію"))
 async def booking_entry(message: Message, state: FSMContext):
-    await hide_reply_keyboard(message)  # сховали reply-клавіатуру
+    await _hide_reply_keyboard(message)   # прячем reply-клавиатуру без «пустого» пузыря
     await state.set_state(Booking.fmt)
     await message.answer("Оберіть формат консультації:", reply_markup=format_inline_kb())
 
 @router.callback_query(Booking.fmt, F.data == "common:back")
 async def booking_fmt_back(call: CallbackQuery, state: FSMContext):
     await state.clear()
-    await call.message.edit_text("Головне меню:", reply_markup=None)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
     await call.message.answer("Головне меню:", reply_markup=main_reply_kb())
     await call.answer()
 
@@ -601,7 +612,10 @@ async def document_entry(message: Message, state: FSMContext):
 @router.callback_query(DocumentFlow.type, F.data == "common:back")
 async def document_type_back(call: CallbackQuery, state: FSMContext):
     await state.clear()
-    await call.message.edit_text("Головне меню:", reply_markup=None)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
     await call.message.answer("Головне меню:", reply_markup=main_reply_kb())
     await call.answer()
 
