@@ -223,9 +223,9 @@ async def about(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         "<b>Юристка:</b> Марія Бутіна\n"
-        "<b>Спеціалізації:</b> сімейне, трудове, міграційне право\n"
+        "<b>Спеціалізації:</b> кримінальне, цивільне, господарське право\n"
         "<b>Контакти:</b> @mariyabutina, mashabutina2001@gmail.com\n"
-        "<b>Години роботи:</b> 10:00–19:00 (пн–пт)",
+        "<b>Години роботи:</b> 08:00–20:00 (пн–пт), вихідні за потреби",
         reply_markup=back_menu_reply_kb(),
     )
 
