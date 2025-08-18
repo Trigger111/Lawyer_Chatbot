@@ -1,10 +1,9 @@
-# app/keyboards.py
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton
 )
 from datetime import datetime, timedelta, time, timezone
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 # --- Таймзона з безпечним фолбеком ---
 def get_kyiv_tz():
@@ -51,6 +50,13 @@ def back_and_menu_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
+# 🔹 нова клавіатура: тільки «Головне меню»
+def menu_only_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 Меню")]],
+        resize_keyboard=True,
+    )
+
 def contact_request_kb() -> ReplyKeyboardMarkup:
     """Кнопка 'поділитися контактом' + назад/меню."""
     return ReplyKeyboardMarkup(
@@ -72,7 +78,7 @@ def back_menu_skip_kb() -> ReplyKeyboardMarkup:
     )
 
 # ---------------- Inline keyboards ----------------
-# 🔽 ОНОВЛЕНО: лише 4 категорії
+# лише 4 категорії
 CATEGORIES = [
     ("⚖️ Кримінальне",   "criminal"),
     ("🏢 Господарське",  "commercial"),
@@ -101,8 +107,8 @@ def urgency_inline_kb() -> InlineKeyboardMarkup:
 def consult_offer_inline_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="⏱ 30 хв", callback_data="offer:30"),
-            InlineKeyboardButton(text="⏱ 60 хв", callback_data="offer:60"),
+            InlineKeyboardButton(text="⏱️ 30 хв", callback_data="offer:30"),
+            InlineKeyboardButton(text="⏱️ 60 хв", callback_data="offer:60"),
         ],
         [InlineKeyboardButton(text="⏭️ Пропустити", callback_data="offer:skip")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="common:back")],
@@ -136,7 +142,7 @@ def document_plan_inline_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="common:back")],
     ])
 
-# (в проекті більше не використовуємо тайм-слоти; функції залишені "на всякий")
+# (в проекті не використовуємо тайм-слоти; залишено як утиліти)
 def generate_time_slots(days_ahead: int = 3) -> list[str]:
     base = datetime.now(tz=TZ)
     hours = [time(10, 0), time(12, 0), time(15, 0), time(18, 0)]

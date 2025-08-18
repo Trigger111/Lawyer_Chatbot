@@ -1,8 +1,6 @@
 # app/handlers.py
 from __future__ import annotations
 import asyncio
-from app.sheets import append_lead_safe
-
 import os
 import re
 import logging
@@ -15,16 +13,27 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import (
     Message, CallbackQuery, ContentType,
     InlineKeyboardMarkup, InlineKeyboardButton,
-    Contact,
+    Contact, ReplyKeyboardRemove,
 )
 
+from app.sheets import append_lead_safe
 from .keyboards import (
     start_kb, main_reply_kb, back_menu_reply_kb, back_and_menu_kb,
     categories_inline_kb, urgency_inline_kb, consult_offer_inline_kb,
-    format_inline_kb,  # time_slots_inline_kb — НЕ используем
+    format_inline_kb,
     document_type_inline_kb, document_plan_inline_kb,
     contact_request_kb, back_menu_skip_kb,
 )
+# «Клава тільки меню»: беремо з keyboards, а якщо її там ще нема — робимо локальний фолбек
+try:
+    from .keyboards import menu_only_kb  # бажаний імпорт
+except Exception:
+    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+    def menu_only_kb():
+        return ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="🏠 Меню")]],
+            resize_keyboard=True,
+        )
 
 from app.db import async_session, create_lead, upsert_user, Lead, Document
 
@@ -40,12 +49,12 @@ RX_TG    = re.compile(r"^@[A-Za-z0-9_]{5,}$")
 def valid_contact(s: str) -> bool: return bool(RX_PHONE.match(s) or RX_TG.match(s))
 def valid_email(s: str) -> bool:   return bool(RX_EMAIL.match(s))
 
-# --- нормализация текста кнопок: убираем эмодзи и лишние пробелы
+# --- нормализация текста кнопок
 def norm(title: str) -> str:
     if not title:
         return ""
     s = title
-    for e in ("🚀","⚡️","📞","📚","👩‍⚖️","🏠"):
+    for e in ("🚀", "⚡️", "📞", "📚", "👩‍⚖️", "🏠"):
         s = s.replace(e, "")
     return re.sub(r"\s+", " ", s).strip().lower()
 
@@ -62,9 +71,10 @@ BTN_SET = {t.lower() for t in BTN_TITLES.values()}
 MAX_PDFS = 2
 ALLOWED_DOC_MIMES = {"application/pdf"}
 
+router = Router()
+
 # ----------------- Admin notify with actions -----------------
 def kb_admin_lead_actions(lead_id: int) -> InlineKeyboardMarkup:
-    # важнo: префикс admin:files: — чтобы не пересекаться с чужими обработчиками admin:lead:...
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📂 Відкрити картку", callback_data=f"admin:lead:open:{lead_id}")],
         [InlineKeyboardButton(text="📎 Вкладення", callback_data=f"admin:files:{lead_id}")],
@@ -113,9 +123,6 @@ def _render_lead_card(l: Lead) -> str:
         rows.append("\n📝 <b>Коротко:</b>\n" + l.brief)
     return "\n".join(rows)
 
-router = Router()
-
-# обработчики для уведомлений админам (карточка/статус)
 @router.callback_query(F.data.startswith("admin:lead:open:"))
 async def admin_open_lead(call: CallbackQuery):
     if not _is_admin(call.from_user.id):
@@ -143,7 +150,6 @@ async def admin_change_status(call: CallbackQuery):
     await call.message.edit_text(_render_lead_card(lead), reply_markup=kb_admin_lead_actions(lead.id))
     await call.answer("Статус оновлено ✅")
 
-# ---- новый хендлер отправки вложений админу по кнопке «📎 Вкладення»
 @router.callback_query(F.data.startswith("admin:files:"))
 async def admin_send_attachments(call: CallbackQuery):
     if not _is_admin(call.from_user.id):
@@ -179,7 +185,8 @@ async def blog_menu(message: Message):
     lines = ["Останні матеріали:"]
     for a in ARTICLES[:5]:
         lines.append(f"• <b>{a['title']}</b>\n{a['summary']}\n<a href='{a['url']}'>Читати</a>")
-    await message.answer("\n\n".join(lines), reply_markup=back_menu_reply_kb())
+    # тільки «Головне меню»
+    await message.answer("\n\n".join(lines), reply_markup=menu_only_kb())
 
 # ----------------- Global main-button router -----------------
 async def route_main_button(message: Message, state: FSMContext) -> bool:
@@ -226,7 +233,7 @@ async def about(message: Message, state: FSMContext):
         "<b>Спеціалізації:</b> кримінальне, цивільне, господарське право\n"
         "<b>Контакти:</b> @mariyabutina, mashabutina2001@gmail.com\n"
         "<b>Години роботи:</b> 08:00–20:00 (пн–пт), вихідні за потреби",
-        reply_markup=back_menu_reply_kb(),
+        reply_markup=menu_only_kb(),  # тільки «Меню»
     )
 
 # ----------------- FSM states -----------------
@@ -257,6 +264,8 @@ class DocumentFlow(StatesGroup):
 # ----------------- 1) Quick question -----------------
 @router.message(F.text.func(lambda t: norm(t) == "швидке питання"))
 async def quick_entry(message: Message, state: FSMContext):
+    # спершу ховаємо нижню reply-клаву
+    await message.answer(" ", reply_markup=ReplyKeyboardRemove())
     await state.set_state(Quick.category)
     await message.answer("Оберіть категорію звернення:", reply_markup=categories_inline_kb())
 
@@ -279,7 +288,6 @@ async def quick_set_category(call: CallbackQuery, state: FSMContext):
     )
     await call.answer()
 
-# --- прием PDF на шаге короткого опису ---
 @router.message(Quick.brief, F.document)
 async def quick_brief_pdf(message: Message, state: FSMContext):
     doc = message.document
@@ -377,9 +385,7 @@ async def quick_name(message: Message, state: FSMContext):
 
 @router.message(Quick.contact, F.content_type == ContentType.CONTACT)
 async def quick_contact_shared(message: Message, state: FSMContext):
-    contact: Contact = message.contact
-    phone = contact.phone_number
-    await state.update_data(contact=phone)
+    await state.update_data(contact=message.contact.phone_number)
     await state.set_state(Quick.email)
     await message.answer("Email (необов’язково) або натисніть «⏭️ Пропустити».", reply_markup=back_menu_skip_kb())
 
@@ -439,17 +445,17 @@ async def _finalize_quick(message: Message, state: FSMContext, email: Optional[s
             consent=True,
         ))
 
-        # сохраняем PDF в таблицу documents
+        # збережемо PDF у таблицю documents
         pdfs: List[str] = (data.get("pdfs") or [])[:MAX_PDFS]
         for fid in pdfs:
             session.add(Document(lead=lead, file_id=fid, kind="document", caption="quick-pdf"))
 
         await session.commit()
 
-    # Google Sheets (не блокируем loop)
+    # Google Sheets — в окремому потоці
     await asyncio.to_thread(append_lead_safe, lead)
 
-    # уведомление + повторная отправка PDF админам (удобно для пуша)
+    # сповіщення + форвард PDF адмінам
     await notify_admins_with_actions(message.bot, lead)
     pdfs = (data.get("pdfs") or [])[:MAX_PDFS]
     if pdfs:
@@ -467,6 +473,7 @@ async def _finalize_quick(message: Message, state: FSMContext, email: Optional[s
 # ----------------- 2) Booking (без календаря) -----------------
 @router.message(F.text.func(lambda t: norm(t) == "записатися на консультацію"))
 async def booking_entry(message: Message, state: FSMContext):
+    await message.answer(" ", reply_markup=ReplyKeyboardRemove())  # сховати reply-клаву
     await state.set_state(Booking.fmt)
     await message.answer("Оберіть формат консультації:", reply_markup=format_inline_kb())
 
@@ -519,8 +526,10 @@ async def booking_name(message: Message, state: FSMContext):
     if await route_main_button(message, state): return
     await state.update_data(name=message.text.strip())
     await state.set_state(Booking.contact)
-    await message.answer("Телефон у форматі +380… або Telegram-нік @username, або поділіться контактом:",
-                         reply_markup=contact_request_kb())
+    await message.answer(
+        "Телефон у форматі +380… або Telegram-нік @username, або поділіться контактом:",
+        reply_markup=contact_request_kb()
+    )
 
 @router.message(Booking.contact, F.content_type == ContentType.CONTACT)
 async def booking_contact_shared(message: Message, state: FSMContext):
@@ -552,16 +561,20 @@ async def booking_email_skip(message: Message, state: FSMContext):
 @router.message(Booking.email, F.text == "⬅️ Назад")
 async def booking_email_back(message: Message, state: FSMContext):
     await state.set_state(Booking.contact)
-    await message.answer("Телефон у форматі +380… або Telegram-нік @username, або поділіться контактом:",
-                         reply_markup=contact_request_kb())
+    await message.answer(
+        "Телефон у форматі +380… або Telegram-нік @username, або поділіться контактом:",
+        reply_markup=contact_request_kb()
+    )
 
 @router.message(Booking.email, F.text)
 async def booking_email(message: Message, state: FSMContext):
     if await route_main_button(message, state): return
     email = message.text.strip()
     if email != "-" and email and not valid_email(email):
-        return await message.answer("Схоже, email некоректний. Спробуйте ще раз або «⏭️ Пропустити».",
-                                    reply_markup=back_menu_skip_kb())
+        return await message.answer(
+            "Схоже, email некоректний. Спробуйте ще раз або «⏭️ Пропустити».",
+            reply_markup=back_menu_skip_kb()
+        )
     await _finalize_booking(message, state, email=None if email in {"-", "—"} else email)
 
 async def _finalize_booking(message: Message, state: FSMContext, email: Optional[str]):
@@ -579,9 +592,7 @@ async def _finalize_booking(message: Message, state: FSMContext, email: Optional
         ))
         await session.commit()
 
-    # Google Sheets
     await asyncio.to_thread(append_lead_safe, lead)
-
     await notify_admins_with_actions(message.bot, lead)
     await message.answer("Готово! Ми зафіксували консультацію. Незабаром підтвердимо деталі.",
                          reply_markup=main_reply_kb())
@@ -612,7 +623,6 @@ async def document_upload_back(message: Message, state: FSMContext):
     await state.set_state(DocumentFlow.type)
     await message.answer("Який тип документа?", reply_markup=document_type_inline_kb())
 
-# ✅ тут была ошибка — лишняя ')'
 @router.message(DocumentFlow.upload, F.content_type.in_({ContentType.DOCUMENT, ContentType.PHOTO}))
 async def document_got_file(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -652,9 +662,7 @@ async def document_finish(call: CallbackQuery, state: FSMContext):
         ))
         await session.commit()
 
-    # Google Sheets
     await asyncio.to_thread(append_lead_safe, lead)
-
     await notify_admins_with_actions(call.bot, lead)
     await call.message.edit_text("Отримали. Візьмемо в роботу після підтвердження умов/вартості. Менеджер напише вам.")
     await state.clear()
