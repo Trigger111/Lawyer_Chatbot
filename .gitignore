@@ -23,3 +23,9 @@ backups/
 # Кэш/прочее
 .DS_Store
 Thumbs.db
+
+data/
+*.db
+*.sqlite3
+*.jsonl
+leads_export_*.csv
